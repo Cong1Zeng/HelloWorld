@@ -1,0 +1,220 @@
+---
+title: "fitdistrplus tutorial"
+output:
+  pdf_document: default
+  html_document: default
+date: "2023-06-20"
+author: "Congyi Zeng"
+---
+
+# Resources: 
+
+R distributions and their packages: 
+
+https://cran.r-project.org/web/views/Distributions.html)
+
+fitdistrplus: An R Package for Fitting Distributions:
+
+https://www.jstatsoft.org/article/view/v064i04
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,message=F}
+## load the package
+library(fitdistrplus)
+library(ggplot2) ## for plotting
+library(actuar) ## useful for distributions-related functions
+```
+
+```{r}
+## load the data
+raw <- read.csv("C:/Congyi/3.3/fitdistrplus/species_30m_DMP_S3.csv")
+unknown <- subset(raw,Species=="Unknown"&delta.time.hours>0)
+```
+
+Our example data is the camera trap data of Detroit 2018. The time intervals between trigger events (categorized by different species) for each camera is recorded. One can find it in the lab folder: *corellia.environment.yale.edu/harris/lab/Lab Projects/MESONICHE/Field Data/Camera Surveys/DMP/Detroit 2018/species_30m_DMP_S3.csv*.
+
+The goal is to fit a distribution for the time interval between triggers caused by unknown reasons. Since there are $n-1$ intervals between $n$ events, we want to clean the data by deleting the first event labeled with delta.time equals $0$.
+
+
+# Descriptive statistics:
+```{r}
+plotdist(unknown$delta.time.hours,demp=T)
+```
+
+**plotdist** returns the observed density of data (pdf and cdf), this gives an intuition on data.
+
+```{r}
+descdist(unknown$delta.time.hours,boot=100)
+```
+
+**descdist** plots the skewness and kurtosis of observation (along with bootstrapping), and compares with several common distributions. If the observation follows a type of distribution, it should have a density function with similar shape, i.e., similar skewness (degree of right-skewness) and kurtosis (relative weights on the tails). 
+
+(Note: skewness and kurtosis are invariant to linear transformation (unit change, standardization), but can be changed by other transformations. Sometimes functions in **fitdistrplus** can report error because of choice scales, try change the units!) 
+
+
+# Fit a distribution
+
+```{r,warning=F}
+## try use exponential
+fit.exp.mle <- fitdist(unknown$delta.time.hours,distr="exp")
+
+## try use weibull
+fit.weibull.mle <- fitdist(unknown$delta.time.hours,distr="weibull")
+```
+
+Exponential and Weibull distribution are 2 classical ways of modeling intervals between events. (Note: exponential is weibull with shape parameter = 1, which implies, with an additional free parameters, weibull can always fit data better than exponential).
+
+By default, **fitdist** uses maximum likelihood method to estimate the distribution parameters. 
+
+```{r}
+summary(fit.exp.mle)
+summary(fit.weibull.mle)
+```
+
+**summary** returns the estimated parameter values, along with likelihood (larger is better), AIC, BIC (smaller is better). Correlation between estimated parameters are returned if there are multiple of them. 
+
+```{r,warning=F}
+fit.weibull.mle.fix <- fitdist(unknown$delta.time.hours,distr="weibull",
+                               fix.arg=list(shape=1))
+```
+
+```{r}
+summary(fit.weibull.mle.fix)
+```
+
+When there are multiple parameters to be estimated, we can fix some of them to estimate the others by **fix.arg** argument. For example, we can fix the shape parameters of weibull distribution to be 1. Now this Weibull distribution fit is identical to the exponential distribution above. (note: scale = 1/rate). 
+
+# Visualization
+
+**fitdistrplus** also provides visualizations to evaluate the distribution fit. 
+
+```{r}
+plotdist(unknown$delta.time.hours,demp=T,
+         distr='weibull', para=list(shape=1,scale=267.7268))
+
+
+```
+
+**plotdist** can also being used as summary of results. Here is the summary for fitted weibull distribution with fixed shape=1. 
+
+```{r}
+options <- list(fit.exp.mle,
+                fit.weibull.mle,
+                fit.weibull.mle.fix)
+legends <- c("exponential",
+             "weibull",
+             "weibull, shape=1")
+denscomp(options,legendtext=legends)
+cdfcomp(options,legendtext=legends)
+ppcomp(options,legendtext=legends)
+qqcomp(options,legendtext=legends)
+```
+
+
+
+**denscomp** plots predicted density function along with observed density. (better fit should closer to the observed density)
+
+**cdfcomp** plots predicted cumulative density function along with observed cdf. (better fit should closer to the observed cdf)
+
+**ppcomp** plots theoretical cumulative density against actual observed cumulative density, i.e., y-axis is the percentage of observed data that is smaller than the data point, x-axis is the probability that the random variable is smaller than the data point. (better fit should closer to the diagnol line).
+
+**qqcomp** plots theoretical quantile against actual observed quantile for each observation. Similiar to P-P plot, a better fit should be closer to the diagnol line.
+
+# Other measures of fit 
+
+By default, **fitdist** returns distribution parameters with maximum likelihood. This means given this selected parameter values, we are more likely to observe the empirical data, than any other parameter values. 
+
+Other than maximum likelihood, there are other standards of evaluating the fitness of a distribution. When optimizing parameters using those methods, it will result in different parameter values. Although being different from one another, all of those values are the best estimation by their own standard.  
+
+## MME
+
+```{r,warning=F}
+emp.moment <- function(x,order){
+  return(mean(x^order))
+}
+
+fit.weibull.mme <- fitdist(unknown$delta.time.hours,distr="weibull",
+                           method = "mme",order=c(1,2),
+                           memp=emp.moment)
+
+fit.weibull.mme$estimate
+```
+
+MME (methods matching estimation) returns estimated parameters to match the moments of distribution with the empirical moments.
+
+**Order** is to select which moments to be matched. 1 = mean, 2 = variance, 3 = skewness, 4 = kurtosis. The length of this argument should equals the number of parameters of the distribution. In this example, weibull have "scale" and "shape" 2 parameters, so we choose to match the mean and variance by **order = c(1,2)**.
+
+**memp** is to calculate sample moments (mean, variance, skewness, kurtosis). Recommend to use **emp.moment** here unless there is a good reason. 
+
+## QME
+
+```{r,warning=F}
+fit.weibull.qme <- fitdist(unknown$delta.time.hours,distr="weibull",
+                           method = "qme", probs=c(0.9,0.95))
+```
+
+QME (quantile matching estimation) returns estimated parameters to match the quantiles of distribution with the empirical quantiles.
+
+**probs** is to specify which quantiles to be matched. Similar to MME, the number of quantiles being matched equals the number of parameters being estimated. In this example, we uses **probs = c(0.9,0.95)** to matches the $90\%$ and $95\%$ quantiles.
+
+```{r}
+options <- list(fit.weibull.mle,
+                fit.weibull.qme)
+legends <- c("weibull, MLE",
+             "weibull, QME")
+qqcomp(options,legendtext=legends)
+```
+
+As the qqplot shows, compared to MLE, our MQE performs better at fitting large intervals because we choose to match the $90\%$ and $95\%$ quantile. However, that results in poor fit for smaller intervals. Choice of **probs** should be based on the data.
+
+## MGE
+
+```{r,warning=F}   
+fit.weibull.mge <- fitdist(unknown$delta.time.hours,distr="weibull",
+                           method = "mge",
+                           gof="CvM")
+```
+
+MGE (maximum goodness-of-fit estimates) minimizes distance between fitted density function and empirical density function. There are multiple measures of the "distance" (**gof**), one can look up the options and their definitions in https://www.jstatsoft.org/article/view/v064i04. 
+
+```{r}
+options <- list(fit.weibull.mle,
+                fit.weibull.mge)
+legends <- c("weibull, MLE",
+             "weibull, MGE")
+denscomp(options,legendtext=legends)
+```
+
+MGE distribution is supposed to closer to the empirical distribution.
+
+```{r}
+## to extract the distribution parameters
+all <- list(
+         fit.weibull.mle,
+         fit.weibull.mme,
+         fit.weibull.qme,
+         fit.weibull.mge)
+
+models <- c("MLE","MME","QME","MGE")
+
+shape <- scale <- log.likelihood <- rep(0,length(all))
+for(i in 1:length(all)){
+  shape[i] <- all[[i]]$estimate[[1]]
+  scale[i] <- all[[i]]$estimate[[2]]
+  log.likelihood[i] <- all[[i]]$loglik
+  
+}
+
+data.frame(models,shape,scale,log.likelihood)
+
+```
+
+
+Usually, different estimating method would not results in large difference in distribution parameters. So using default "MLE" should be fine in most cases. 
+
+
+
+
