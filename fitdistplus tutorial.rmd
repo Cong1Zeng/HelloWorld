@@ -218,6 +218,8 @@ gofstat(all)
 
 Goodness-of-fit (which is minimized when **MGE** method is being applied) is also a criterion. **gofstat** function returns 3 goodness-of-fit statistic (smaller is better).
 
+The results and fitness of our distributions are all similar, except the distribution using **QME** method. This is because in the **QME** example we choose to match quantiles at right tail ($90\%$ and $95\%$), rather than quantiles at center ($33\%$ and $67\%$ for example). One should not do this if there are no specific reasons.
+
 Usually, different estimating method would not results in large difference in distribution parameters. So using default "MLE" should be fine in most cases. 
 
 
