@@ -205,13 +205,18 @@ for(i in 1:length(all)){
   shape[i] <- all[[i]]$estimate[[1]]
   scale[i] <- all[[i]]$estimate[[2]]
   log.likelihood[i] <- all[[i]]$loglik
-  
 }
 
 data.frame(models,shape,scale,log.likelihood)
-
 ```
 
+We can extract the model parameters and other information to compare the performance of the distribution. log-likelihood is a commonly used criterion, which is minimized when **MLE** method being used when fitting the distribution.
+
+```{r}
+gofstat(all)
+```
+
+Goodness-of-fit (which is minimized when **MGE** method is being applied) is also a criterion. **gofstat** function returns 3 goodness-of-fit statistic (smaller is better).
 
 Usually, different estimating method would not results in large difference in distribution parameters. So using default "MLE" should be fine in most cases. 
 
